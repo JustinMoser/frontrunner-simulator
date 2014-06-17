@@ -218,51 +218,78 @@ And now finally we need to output the sim results to file
 >runtest steps = [Tofile "simplesim12mm.csv" (hdrs ++ (g startprice 0 (sim steps))), Closefile "simplesim2mm.csv"] 
 >                where 
 >                ||hdrs = "Price,SellPressure,BuyPressure,Inv5,Inv4,Inv3,Inv2,Inv1" 
->                hdrs = "Time,Bids,Asks,Buys,Sells,Bidprice1,Bidprice2,Askprice1,Askprice2,AskSize1,Asksize2,Buys1,Buys2,Sells1,Sells2,BidPrice2,Price,SellPressure,BuyPressure,Net Pressure,BestBid,BestAsk,Invs\n"
+>                hdrs = "Time,Bids,Asks,Buys,Sells,BidPrice1,BidPrice2,AskPrice1,AskPrice2,AskSize1,Asksize2,BuySize1,BuySize2,SellSize1,SellSize2,Price,SellPressure,BuyPressure,Net Pressure,BestBid,BestAsk,Invs\n"
 >                g p t []     = [] 
 >                g p t (x:xs) = output ++ (g ltp (t+1) xs) 
 >                               where 
 >                               (output,ltp) = h p t x 
 >                h p t (bids,asks,sells,buys,xbids,xasks,xsells,xbuys,bb,ba,ltp,pp,sellp,buyp,invs) 
 >                         = k  
->                             (foldr (+) 0 (map getordersize bids))  || ((getordersize.safehd) (filter ((=1).getorderid) bids))  
->                             (foldr (+) 0 (map getordersize asks))  || ((getordersize.safehd) (filter ((=2).getorderid) bids))  
->                             (foldr (+) 0 (map getordersize buys))  || ((getordersize.safehd) (filter ((=1).getorderid) asks))  
->                             (foldr (+) 0 (map getordersize sells))  || ((getordersize.safehd) (filter ((=2).getorderid) asks))  
->                             ((getorderprice.safehd) (filter ((=1).getorderid) bids))  
->                             ((getorderprice.safehd) (filter ((=2).getorderid) bids))
->                             ((getorderprice.safehd) (filter ((=1).getorderid) asks))
->                             ((getorderprice.safehd) (filter ((=2).getorderid) asks))
->                             ((getordersize.safehd) (filter ((=1).getorderid) asks))  
->                             ((getordersize.safehd) (filter ((=2).getorderid) asks))
->                             ((getordersize.safehd) (filter ((=1).getorderid) buys))  
->                             ((getordersize.safehd) (filter ((=2).getorderid) buys))
->                             ((getordersize.safehd) (filter ((=1).getorderid) sells))
->                             ((getordersize.safehd) (filter ((=2).getorderid) sells))
->                             || ((getordersize.safehd) (filter ((=1).getorderid) xbids))  
->                             || ((getordersize.safehd) (filter ((=2).getorderid) xbids))  
->                             sellp buyp bb ba invs pp ltp 
+>                             (foldr (+) 0 (map getordersize bids))  || Bids
+>                             (foldr (+) 0 (map getordersize asks))  || Asks
+>                             (foldr (+) 0 (map getordersize buys))  || Buys
+>                             (foldr (+) 0 (map getordersize sells))  || Sells
+>                             ((getorderprice.safehd) (filter ((=1).getorderid) bids))  || BidPrice1
+>                             ((getorderprice.safehd) (filter ((=2).getorderid) bids))  || BidPrice2
+>                             ((getorderprice.safehd) (filter ((=1).getorderid) asks))  || AskPrice1
+>                             ((getorderprice.safehd) (filter ((=2).getorderid) asks))  || AskPrice2
+>                             ((getordersize.safehd) (filter ((=1).getorderid) asks))   || AskSize1
+>                             ((getordersize.safehd) (filter ((=2).getorderid) asks))   || AskSize2
+>                             ((getordersize.safehd) (filter ((=1).getorderid) buys))   || BuySize1
+>                             ((getordersize.safehd) (filter ((=2).getorderid) buys))   || BuySize2
+>                             ((getordersize.safehd) (filter ((=1).getorderid) sells))  || SellSize1
+>                             ((getordersize.safehd) (filter ((=2).getorderid) sells))  || SellSize2
+>                             sellp || SellPressure
+>                             buyp  || BuyPressure
+>                             bb    || BestBid
+>                             ba    || BestAsk
+>                             invs  || Inventories
+>                             pp    || Prices
+>                             ltp   || LastTradePrice
 >                           where 
 >                           safehd [] = Order Bid 0 0 0 0 
 >                           safehd (x:xs) = x 
 >                           showwithcommas []     = "" 
 >                           showwithcommas [x]    = (shownum x) 
 >                           showwithcommas (x:xs) = (shownum x)++","++(showwithcommas xs) 
+                         
+                            k  =
+                                bi = bids
+                                as = asks
+                                bu = buys
+                                se = sells
+                                bi1 = bid price 1
+                                bi2 = bid price 2
+                                as1 = ask price 1
+                                as2 = ask price 2
+                                asize1 = ask size 1
+                                asize2 = ask size 2
+                                bu1 = buys size 1
+                                bu2 = buy size 2
+                                se1 = sell size 1
+                                se2 = sell size 2
+                                sp = sell pressure
+                                bp = buy pressure
+                                bb = best bid
+                                ba = best ask
+                                is = inventories
+                                xs = prices
+                                ltp = last trade price
+
+>                           k  bi as bu se bi1 bi2 as1 as2 asize1 asize2 bu1 bu2 se1 se2 sp bp bb ba is [] ltp 
+>                              = ((showwithcommas ([t,bi,as,bu,se,bi1,bi2,as1,as2,asize1,asize2,bu1,bu2,se1,se2,ltp,sp,bp,(sp-bp),bb,ba]++is))++"\n",ltp) 
 >
->                           k  bi as bu se bi1 as1 asize1 bu1 se1 bi2 as2 asize2 bu2 se2 sp bp bb ba is [] ltp 
->                              = ((showwithcommas ([t,bi,as,bu,se,bi1,as1,asize1,bu1,se1,bi2,as2,asize2,bu2,se2,ltp,sp,bp,(sp-bp),bb,ba]++is))++"\n",ltp) 
+>                           k  bi as bu se bi1 bi2 as1 as2 asize1 asize2 bu1 bu2 se1 se2 sp bp bb ba is xs ltp  
+>                              = (kk bi as bu se bi1 bi2 as1 as2 asize1 asize2 bu1 bu2 se1 se2 sp bp bb ba is xs, ltp) 
 >
->                           k  bi as bu se bi1 as1 asize1 bu1 se1 bi2 as2 asize2 bu2 se2 sp bp bb ba is xs ltp  
->                              = (kk bi as bu se bi1 as1 asize1 bu1 se1 bi2 as2 asize2 bu2 se2 sp bp bb ba is xs, ltp) 
+>                           kk bi as bu se bi1 bi1 as1 as2 asize1 asize2 bu1 bu2 se1 se2 sp bp bb ba is [] = error "kk applied to []" 
 >
->                           kk bi as bu se bi1 as1 asize1 bu1 se1 bi2 as2 asize2 bu2 se2 sp bp bb ba is [] = error "kk applied to []" 
+>                           kk bi as bu se bi1 bi2 as1 as2 asize1 asize2 bu1 bu2 se1 se2 sp bp bb ba is [x]     
+>                              = (showwithcommas ([t,bi,as,bu,se,bi1,bi2,as1,as2,asize1,asize2,bu1,bu2,se1,se2,x,sp,bp,(sp-bp),bb,ba]++is))++"\n" 
 >
->                           kk bi as bu se bi1 as1 asize1 bu1 se1 bi2 as2 asize2 bu2 se2 sp bp bb ba is [x]     
->                              = (showwithcommas ([t,bi,as,bu,se,bi1,as1,asize1,bu1,se1,bi2,as2,asize2,bu2,se2,x,sp,bp,(sp-bp),bb,ba]++is))++"\n" 
->
->                           kk bi as bu se bi1 as1 asize1 bu1 se1 bi2 as2 asize2 bu2 se2 sp bp bb ba is (x:xs)  
->                              = ((showwithcommas ([t,bi,as,bu,se,bi1,as1,asize1,bu1,se1,bi2,as2,asize2,bu2,se2,x,sp,bp,(sp-bp),bb,ba]++is))++"\n") 
->                                ++(kk bi as bu se bi1 as1 asize1 bu1 se1 bi2 as2 asize2 bu2 se2 sp bp bb ba is xs) 
+>                           kk bi as bu se bi1 bi2 as1 as2 asize1 asize2 bu1 bu2 se1 se2 sp bp bb ba is (x:xs)  
+>                              = ((showwithcommas ([t,bi,as,bu,se,bi1,bi2,as1,as2,asize1,asize2,bu1,bu2,se1,se2,x,sp,bp,(sp-bp),bb,ba]++is))++"\n") 
+>                                ++(kk bi as bu se bi1 bi2 as1 as2 asize1 asize2 bu1 bu2 se1 se2 sp bp bb ba is xs) 
  
  
 For each experiment we need to specify some agents as follows. This is a list of partial applications of the function "mm";  
