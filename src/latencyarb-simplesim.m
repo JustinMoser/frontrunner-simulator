@@ -8,31 +8,63 @@ To produce graphs, we want to know (i) inventories (ii) prices (iii) sell pressu
  
 An order is given by the type order_t 
  
->order_t ::= Order ordertype_t ordersize_t orderprice_t orderid_t ordertime_t 
+>order_t ::= Order ordertype_t ordersize_t orderprice_t orderid_t ordertime_t exchid_t
 >ordertype_t ::= Bid | Ask | Buy | Sell 
 >ordersize_t == num 
 >orderprice_t == num 
 >orderid_t == num 
 >ordertime_t == num 
+>exchid_t == num
  
 And here are some helper functions: 
  
->getorderid         (Order ty sz p i t)       = i 
->getordersize       (Order ty sz p i t)       = sz 
->getorderprice      (Order ty sz p i t)       = p 
->getordertime       (Order ty sz p i t)       = t 
->setordertime       (Order ty sz p i t) newt  = Order ty sz p i newt 
->setordersize       (Order ty sz p i t) newsz = Order ty newsz p i t 
->setorderprice      (Order ty sz p i t) newp  = Order ty sz newp i t 
->subtractordersize  (Order ty sz p i t) subsz = Order ty (sz-subsz) p i t 
- 
- 
+>getorderid         (Order ty sz p i t exchid)       = i 
+>getordersize       (Order ty sz p i t exchid)       = sz 
+>getorderprice      (Order ty sz p i t exchid)       = p 
+>getordertime       (Order ty sz p i t exchid)       = t 
+>setordertime       (Order ty sz p i t exchid) newt  = Order ty sz p i newt 
+>setordersize       (Order ty sz p i t exchid) newsz = Order ty newsz p i t 
+>setorderprice      (Order ty sz p i t exchid) newp  = Order ty sz newp i t 
+>subtractordersize  (Order ty sz p i t exchid) subsz = Order ty (sz-subsz) p i t 
+>getorderexchid     (Order ty sz p i t exchid)       = exchid
+>setorderexchid     (Order ty sz p i t exchid) newexchid = Order ty sz p i t newexchid
+
+>selectmin f xs = foldl g (hd xs) xs
+>                 where
+>                 g a b = a, if(f a < f b)
+>                       = b, otherwise
+
+
 Market makers output orders, but we also make them output their own inventories so we can plot this on a graph. 
 The graph is plotted as the output from the exchange, so the market makers pass their inventories to the exchange. 
 The market makers take as input parameters: xbids, xasks, xsells, xbuys, bestbid and bestask etc from the exchange,  
 and time and oldinv etc are state parameters 
  
- 
+>bestprice_buyer xq (((bids1,asks1,sells1,buys1,xbids1,xasks1,xsells1,xbuys1,bestbid1,bestask1,ltp1,pp1,sellp1,buyp1,invs1):rest),
+>                     (bids2,asks2,sells2,buys2,xbids2,xasks2,xsells2,xbuys2,bestbid2,bestask2,ltp2,pp2,sellp2,buyp2,invs2):rest) oldinv mosize time id
+>                      = (bid, ask, sell, buy, newinv) : (bestprice_buyer nxq rest newinv mosize (time+1) id)
+>                      where
+>                      (xbidsq,xasksq,xbuysq,xsellsq) = xq
+>                      (xbidsq1,xasksq1,xbuysq1,xsellsq1)
+>                               = makedelay delta1 (xbidsq++[xbids], xasksq++[xasks], xbuysq++[xbuys], xsellsq++[xsells]), if time=delaytime1
+>                               = makedelay delta2 (xbidsq++[xbids], xasksq++[xasks], xbuysq++[xbuys], xsellsq++[xsells]), if time=delaytime2
+>                               = makedelay delta3 (xbidsq++[xbids], xasksq++[xasks], xbuysq++[xbuys], xsellsq++[xsells]), if time=delaytime3
+>                               = (xbidsq++[xbids], xasksq++[xasks], xbuysq++[xbuys], xsellsq++[xsells]), otherwise
+>                      makedelay n (a,b,c,d) = (delay n ([]:a), delay n ([]:b), delay n ([]:c), delay n ([]:d))
+>                      (xbidsnew,xasksnew,xbuysnew,xsellsnew) = (hd xbidsq1, hd xasksq1, hd xbuysq1, hd xsellsq1)
+>                      nxq = (tl xbidsq1, tl xasksq1, hd xbuysq1, xsellsq1)
+>                      bid = Order Bid 0 0 id time exchid
+>                      ask = Order Ask 0 0 id time exchid
+>                      buy = Order Buy buysize bestask id time exchid, if(oldinv < mosize)
+>                          = Order Buy 0 0 id time exchid, otherwise
+>                      sell = Order Sell 0 0 id time exchid
+>                      exchid = getorderexchid (selectmin getorderprice[hd asks1, hd asks2])
+>                      buysize = getordersize (hd asks1), if((bestask1 < bestask2)&(getordersize (hd asks1) < mosize))
+>                              = getordersize (hd asks2), if((bestask2 < bestask1)&(getordersize (hd asks2) < mosize))
+>                              = mosize, otherwise
+>                      newinv = oldinv + (psi id xbuysnew)
+>                      psi i os = foldr (+) 0 (map getordersize (filter ((=i).getorderid) os))
+
 >mm xq ((bids,asks,sells,buys,xbids, xasks, xsells, xbuys, bestbid, bestask, ltp, pp, sellp, buyp, invs):rest) oldinv mosize time id  
 >    = (bid, ask, sell, buy, newinv) : (mm nxq rest newinv mosize (time+1) id) 
 >      where 
@@ -104,9 +136,13 @@ The exchange also takes in and outputs its own bidbook and askbook.  The exchang
  
 >exch:: num -> [([order_t],[order_t],[order_t],[order_t],[num])]->num->[order_t]->[order_t] -> num 
 >           -> [([order_t],[order_t],[order_t],[order_t],[order_t],[order_t],[order_t],[order_t],num,num,num,[num],num,num,[num])] 
->exch id ((bids,asks,sells,buys,invs):rest) time bbook abook ltp 
+>exch id ((allbids,allasks,allsells,allbuys,invs):rest) time bbook abook ltp 
 >    = (bids,asks,sells,buys,xbids, xasks, xsells, xbuys, bb, ba, newltp, pp, sellp, buyp, invs): (exch id rest (time+1) newbbook newabook newltp) 
 >      where 
+>      bids = (filter ((=id).getexchid) allbids)
+>      asks = (filter ((=id).getexchid) allasks)
+>      sells = (filter ((=id).getexchid) allsells)
+>      buys = (filter ((=id).getexchid) allbuys)
 >      bbook1 = insb bids [], if allfillandkill 
 >             = insb bids bbook, otherwise 
 >               where 
@@ -186,9 +222,8 @@ The exchange also takes in and outputs its own bidbook and askbook.  The exchang
 >                            m1 = subtractordersize m lsize 
 >                            m2 = setorderprice m lprice 
 >                            xlim2 = setordersize l msize 
->                            l1 = subtractordersize l msize 
- 
- 
+>                            l1 = subtractordersize l msize
+
 We will need a delay component as follows: 
  
 >delay n []     = [] 
@@ -199,7 +234,7 @@ Now we need to run a numerical simulation which uses the above definitions.
  
 >sim steps = take steps allexchstates 
 >            where 
->            allexchstates = initexchstate: (exch 0 allmessages 1 [] [] startprice) 
+>            allexchstates = initexchstate: (exch 0 allmessages 1 [] [] startprice : exch 1 allmessages 1 [] [] startprice) 
 >            initexchstate = ([],[],[],[],[],[],[],[],startprice-(startspread/2),startprice+(startspread/2),startprice,[],0,0,[])  
 >                            || bids,asks,sells,buys,xbids,xasks,xsells,xbuys,bb,ba,ltp,pp,sellp,buyp,invs 
 >            allmessages    = mergedmessages 
@@ -329,7 +364,7 @@ Other parameters for this experiment:
  
 >ul = 3000 
 >ll = (-ul) 
->allfillandkill = False 
+>allfillandkill = False || If set to true, any remaining order not filled at best price will be killed. We do not want this! 
 >delta1 = 0 || 2 
 >delaytime1 = 90 
 >delta2 = 3 || 3 

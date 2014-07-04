@@ -215,7 +215,7 @@ Now we need to run a numerical simulation which uses the above definitions.
  
 And now finally we need to output the sim results to file 
  
->runtest steps = [Tofile "simplesim12mm.csv" (hdrs ++ (g startprice 0 (sim steps))), Closefile "simplesim2mm.csv"] 
+>runtest steps = [Tofile "simplesim12mm.csv" (hdrs ++ (g startprice 0 (sim steps))), Closefile "simplesim2mm.csv", System "open simplesim12mm.csv &"]
 >                where 
 >                ||hdrs = "Price,SellPressure,BuyPressure,Inv5,Inv4,Inv3,Inv2,Inv1" 
 >                hdrs = "Time,Bids,Asks,Buys,Sells,BidPrice1,BidPrice2,AskPrice1,AskPrice2,AskSize1,Asksize2,BuySize1,BuySize2,SellSize1,SellSize2,Price,SellPressure,BuyPressure,Net Pressure,BestBid,BestAsk,Invs\n"
@@ -325,5 +325,5 @@ Other parameters for this experiment:
 >fsellsize=3300 || 4000 
 >fstoptime= 180 
 >market_order_size= 177 
->mmsizes = [3300,200,-200,400,-400,600,-600,0,0,800,-800,0] 
+>mmsizes = [4300,200,-200,400,-400,600,-600,0,0,800,-800,0] 
  
