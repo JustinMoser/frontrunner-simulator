@@ -93,6 +93,36 @@ And here are some helper functions:
 >                 g a b = a, if(f a < f b)
 >                       = b, otherwise
 
+>volumeatexch::[order_t] -> [order_t] -> num -> num
+>volumeatexch (x:xs) (y:ys) vol = vol + (getordersize x) + (volumeatexch xs (y:ys) vol), if ((getorderprice x) < (getorderprice y))
+>                               = vol, otherwise
+
+Here is a function to decide where to place Buy orders given two askbooks and a target order size
+It takes args (i) askbook (ii) askbook (iii) ordersize for ex1 (iv) ordersize for ex2 (v) targetordersize
+
+>decideorders :: [order_t]  -> [order_t] -> num -> num -> num -> [(num, num)]
+>decideorders as1      as2      s1 s2 0   = [(1,s1), (2,s2)]
+>decideorders []       as2      0  s2 inv = [(2,s2+inv)]
+>decideorders []       as2      s1 s2 inv = [(1,s1), (2,s2+inv)]
+>decideorders as1      []       s1 0  inv = [(1,s1+inv)]
+>decideorders as1      []       s1 s2 inv = [(1,s1+inv), (2,s2)]
+>decideorders (a1:as1) (a2:as2) s1 s2 inv = decideorders as1      (a2:as2) (s1+ss1) s2       (inv-ss1), if (p1<p2)||((p1=p2)&(ss1>=ss2))
+>                                         = decideorders (a1:as1) as2      s1       (s2+ss2) (inv-ss2), otherwise
+>                                           where
+>                                           p1  = getorderprice a1
+>                                           p2  = getorderprice a2
+>                                           ss1 = getordersize a1
+>                                           ss2 = getordersize a2
+
+>os :: (num,num) -> num
+>os (exchid,ordersize) = ordersize
+
+
+
+>oex :: (num,num) -> num
+>oex (exchid,ordersize) = exchid
+
+
 ====================
 BROKER AGENT DETAILS
 ====================
@@ -103,23 +133,24 @@ When one best ask has been filled, it will move onto the next best ask until the
  
 >broker xq (((bids1,asks1,sells1,buys1,xbids1,xasks1,xsells1,xbuys1,bestbid1,bestask1,ltp1,pp1,sellp1,buyp1,invs1):rest1),
 >            (bids2,asks2,sells2,buys2,xbids2,xasks2,xsells2,xbuys2,bestbid2,bestask2,ltp2,pp2,sellp2,buyp2,invs2):rest2) oldinv starttime mosize time id
->                      = (bid, ask, sell, buy, newinv) : (bestprice_buyer xq rest1 rest2 newinv mosize (time+1) id)
+>                      = orders : (broker xq (rest1,rest2) newinv starttime mosize (time+1) id)
 >                        where
->                        bid = Order Bid 0 0 id time exchid
->                        ask = Order Ask 0 0 id time exchid
->                        buy = Order Buy buysize bestask id time exchid, if((oldinv < mosize)&(time>=starttime))
->                             = Order Buy 0 0 id time exchid, otherwise
->                        sell = Order Sell 0 0 id time exchid
->                        exchid = getorderexchid (selectmin getorderprice[hd asks1, hd asks2])
->                        buysize = getordersize (hd asks1), if((bestask1 < bestask2)&((getordersize (hd asks1)) < mosize))
->                                = getordersize (hd asks2), if((bestask2 < bestask1)&((getordersize (hd asks2)) < mosize))
->                                = getordersize (hd asks1), if((bestask1=bestask2)&((getordersize (hd asks1)) < mosize)) || CHECK SIZE OF ORDERS TO DETERMINE WHICH ORDER TO EXECUTE
->                                = mosize, otherwise
->                        bestask = bestask1, if(bestask1 < bestask2)
->                                = bestask2, otherwise
->      				     newinv = oldinv + (psi id xbids1) + (psi id xbuys1) - (psi id xasks1) - (psi id xsells1) 
->                                        + (psi id xbids2) + (psi id xbuys2) - (psi id xasks2) - (psi id xsells2)
+>                        orders = [(bid1,ask1,sell1,buy1,newinv),(bid2,ask2,sell2,buy2,newinv)]
+>                        bid1 = Order Bid 0 0 id time 0
+>                        bid2 = Order Bid 0 0 id time 1
+>                        ask1 = Order Ask 0 0 id time 0
+>                        ask2 = Order Ask 0 0 id time 1
+>                        buy1 = Order Buy (buysize1 decideorders) 0 id time 0, if((oldinv < mosize)&(time>=starttime))
+>                             = Order Buy 0 0 id time 0, otherwise
+>                        buy2 = Order Buy (buysize2 decideorders) 0 id time 1, if((oldinv < moszie)&(time>=starttime))
+>                        buy2 = Order Buy 0 0 id time 1, otherwise
+>                        sell1 = Order Sell 0 0 id time 0 
+>                        sell2 = Order Sell 0 0 id time 1
+>                        buysize1 orders = os (hd (orders))
+>                        buysize2 orders = os (hd (tl (orders))) 
+>      				     newinv = oldinv + (psi id xbids1) + (psi id xbuys1) - (psi id xasks1) - (psi id xsells1) + (psi id xbids2) + (psi id xbuys2) - (psi id xasks2) - (psi id xsells2)
 >                        psi i os = foldr (+) 0 (map getordersize (filter ((=i).getorderid) os))
+
 
 
 =======================
@@ -127,13 +158,13 @@ POPULATOR AGENT DETAILS
 =======================
 
 The populator agent issues ask orders at various prices for 10 timesteps, 
-up until the best price buyer begins issuing buy orders. This creates liquidity
+up until the broker agent begins issuing buy orders. This creates liquidity
 for this experinent
 
 
 >populator xq (((bids1,asks1,sells1,buys1,xbids1,xasks1,xsells1,xbuys1,bestbid1,bestask1,ltp1,pp1,sellp1,buyp1,invs1):rest1),
 >               (bids2,asks2,sells2,buys2,xbids2,xasks2,xsells2,xbuys2,bestbid2,bestask2,ltp2,pp2,sellp2,buyp2,invs2):rest2) oldinv stoptime time id || Make sure stoptime = startime-1
->                = (bid, ask, sell, buy, newinv) : (populator nxq rest1 rest2 newinv stoptime (time+1) id)
+>                = (bid, ask, sell, buy, newinv) : (populator xq (rest1,rest2) newinv stoptime (time+1) id)
 >                  where
 >                  bid = Order Bid 0 0 id time exchid
 >                  ask = Order Ask (populator_sizes!time) (populator_prices!time) time id exchid, if (time < stoptime)
@@ -142,7 +173,7 @@ for this experinent
 >                  sell = Order Sell 0 0 id time exchid
 >                  exchid = 0, if ((time mod 2) = 0)
 >                         = 1, otherwise
->      		       newinv = oldinv + (psi id xbids) + (psi id xbuys) - (psi id xasks) - (psi id xsells) 
+>                  newinv = oldinv + (psi id xbids1) + (psi id xbuys1) - (psi id xasks1) - (psi id xsells1) + (psi id xbids2) + (psi id xbuys2) - (psi id xasks2) - (psi id xsells2)
 >                  psi i os = foldr (+) 0 (map getordersize (filter ((=i).getorderid) os))
 >
 
@@ -158,80 +189,18 @@ to the counterparty at a higher price. This is known as front-running.
 
 
 >frontrunner xq (((bids1,asks1,sells1,buys1,xbids1,xasks1,xsells1,xbuys1,bestbid1,bestask1,ltp1,pp1,sellp1,buyp1,invs1):rest1),
->              (bids2,asks2,sells2,buys2,xbids2,xasks2,xsells2,xbuys2,bestbid2,bestask2,ltp2,pp2,sellp2,buyp2,invs2):rest2) oldinv time id
->              = (bid, ask, sell, buy, newinv) : (predator nxq rest1 rest2 newinv (time+1) id)
->              where
->              bid = Order Bid 0 0 id time exchid
->              ask = Order Ask 0 (bestask1-1) id time 0, if((time mod 2)=0)
->                  = Order Ask 1 (bestask2-1) id time 1, otherwise
->              buy = Order Buy ((getordersizeforcp getcp)-1)
->              
+>              (bids2,asks2,sells2,buys2,xbids2,xasks2,xsells2,xbuys2,bestbid2,bestask2,ltp2,pp2,sellp2,buyp2,invs2):rest2) estsize oldinv time id
+>              = (bid, ask, sell, buy, newinv) : (frontrunner xq (rest1,rest2) estsize newinv (time+1) id)
+>                where
+>                order1size= os (hd (decideorders asks1 asks2))
+>                order2size = os (hd (tl (decideorders asks1 asks2)))
+>                bid = Order Bid 0 0 id time 0
+>                buy = Order Buy (estsize - order1size) bestask2 id time 1, if(order1size=(getordersize (hd xbuys1)))
+>                ask = Order Ask (estsize - order1size) (newbestask asks2) id time 1
+>                sell = Order Sell 0 0 id time 0
+>                newbestask (x:xs) = 
+>                newinv = oldinv + (psi id xbids1) + (psi id xbuys1) - (psi id xasks1) - (psi id xsells1) + (psi id xbids2) + (psi id xbuys2) - (psi id xasks2) - (psi id xsells2)
 
->mm xq ((bids,asks,sells,buys,xbids, xasks, xsells, xbuys, bestbid, bestask, ltp, pp, sellp, buyp, invs):rest) oldinv mosize time id  
->    = (bid, ask, sell, buy, newinv) : (mm nxq rest newinv mosize (time+1) id) 
->      where 
->      (xbidsq, xasksq, xbuysq, xsellsq) =  xq 
->      (xbidsq1, xasksq1, xbuysq1, xsellsq1)  
->                = makedelay delta1 (xbidsq++[xbids], xasksq++[xasks], xbuysq++[xbuys], xsellsq++[xsells]), if time=delaytime1 
->                = makedelay delta2 (xbidsq++[xbids], xasksq++[xasks], xbuysq++[xbuys], xsellsq++[xsells]), if time=delaytime2 
->                = makedelay delta3 (xbidsq++[xbids], xasksq++[xasks], xbuysq++[xbuys], xsellsq++[xsells]), if time=delaytime3 
->                = (xbidsq++[xbids], xasksq++[xasks], xbuysq++[xbuys], xsellsq++[xsells]), otherwise 
->      makedelay n (a,b,c,d) = (delay n ([]:a), delay n ([]:b), delay n ([]:c), delay n ([]:d)) 
->      (xbids1, xasks1, xbuys1, xsells1) = (hd xbidsq1, hd xasksq1, hd xbuysq1, hd xsellsq1) 
->      nxq = (tl xbidsq1, tl xasksq1, tl xbuysq1, tl xsellsq1) 
->      bid  = Order Bid  bidsize  (bidprice bestbid1 bestask1 newinv) id time, if ((time mod 2) = 0)&(newinv<ul)&(newinv>ll) 
->           = Order Bid  0        0                                   id time, otherwise 
->      ask  = Order Ask  asksize  (askprice bestbid1 bestask1 newinv) id time, if ((time mod 2) = 0)&(newinv<ul)&(newinv>ll) 
->           = Order Ask  0        0                                   id time, otherwise 
->      buy  = Order Buy  buysize  0                                   id time, if ((time mod 2) = 0)&(newinv<=ll) 
->           = Order Buy  0        0                                   id time, otherwise 
->      sell = Order Sell sellsize 0                                   id time, if ((time mod 2) = 0)&(newinv>=ul) 
->           = Order Sell 0        0                                   id time, otherwise 
->      newinv = oldinv + (psi id xbids1) + (psi id xbuys1) - (psi id xasks1) - (psi id xsells1) 
->      psi i os = foldr (+) 0 (map getordersize (filter ((=i).getorderid) os)) 
->      bidsize  = max[0,ul-1-newinv] 
->      asksize  = max[0,newinv-(ll+1)] 
->      buysize  = 0,   if (newinv > ll) 
->               = mosize, otherwise || -ll, otherwise 
->      sellsize = 0,   if (newinv < ul) 
->               = mosize, otherwise || ul,  otherwise 
->      bestbid1 = bestbid, if bestbid > 0 
->               = max [0,ltp-10], otherwise 
->      bestask1 = bestask, if bestask > 0 
->               = ltp+10, otherwise 
->      bidprice bb ba ni = max [0,bb - abs(ba-bb)*(1-(ul-1-ni)/(ul-ll-2))] 
->      askprice bb ba ni = max [0,ba + abs(ba-bb)*(ul-1-ni)/(ul-ll-2)] 
- 
- 
-The fundamental seller is similar in form to the market maker, but only issues sell orders up to a given time. 
-The fundamental seller has id 3. 
- 
- 
->fs xq ((bids,asks,sells,buys,xbids, xasks, xsells, xbuys, bestbid, bestask, ltp, pp, sellp, buyp, invs):rest) oldinv stoptime time id 
->    = (bid, ask, sell, buy, newinv) : (fs xq rest newinv stoptime (time+1) id) 
->      where 
->      newinv = oldinv + (psi id xbids) + (psi id xbuys) - (psi id xasks) - (psi id xsells) 
->      psi i os = foldr (+) 0 (map getordersize (filter ((=i).getorderid) os)) 
->      bid  = Order Bid  0    0       id time 
->      ask  = Order Ask  0    0       id time 
->      buy  = Order Buy  0    0       id time 
->      sell = Order Sell fsellsize  0 id time, if ((time mod 2)=0) & (time < stoptime) 
->           = Order Sell 0    0       id time, otherwise 
-> 
->fb xq ((bids,asks,sells,buys,xbids, xasks, xsells, xbuys, bestbid, bestask, ltp, pp, sellp, buyp, invs):rest) oldinv stoptime time id 
->    = (bid, ask, sell, buy, newinv) : (fb xq rest newinv stoptime (time+1) id) 
->      where 
->      newinv = oldinv + (psi id xbids) + (psi id xbuys) - (psi id xasks) - (psi id xsells) 
->      psi i os = foldr (+) 0 (map getordersize (filter ((=i).getorderid) os)) 
->      bid  = Order Bid  0    0       id time 
->      ask  = Order Ask  0    0       id time 
->      sell = Order Sell  0    0       id time 
->      buy  = Order Buy (fsellsize/2)  0 id time, if ((time mod 2)=0) & (time < stoptime) & ((time mod 30) = 0) 
->           = Order Buy 0    0       id time, otherwise 
-> 
- 
- 
- 
 The exchange takes in lists of orders from the traders and produces the bestbid and bestask plus 
 lists of confirmations (and price, inventories, sellp and buyp for the graphs).   
 The exchange also takes in and outputs its own bidbook and askbook.  The exchange has id 0. 
@@ -451,7 +420,7 @@ the function "sim" will apply each of these to its start time and to its unique 
  
 >agents agentinput = [
 >                     bestprice_buyer initxq agentinput 0 buyer_start_time bestprice_mo_size,
->                     populator initxq agentinput 0 buyer_start_time,
+>                     populator initxq agentinput 0 buyer_start_time
 >                    ] 
 >                    where 
 >                    initxq = ([],[],[],[]) 
