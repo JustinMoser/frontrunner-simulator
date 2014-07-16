@@ -320,8 +320,7 @@ Now we need to run a numerical simulation which uses the above definitions.
 >                                                         || (bids, asks, sells, buys, invs)  
 >                                                         || All collected together for each time step 
 >                                                         || NB this does not depend on the number of traders - so it should work fine! 
->                                                         || Justin - ignore my previous comment here!!!!! 
->                                                         ||          (I confused simplesim with big sim!) 
+>                                                         || (I confused simplesim with big sim!) 
 >                             g []                        (a,b,c,d,e) = (a,b,c,d,e) 
 >                             g ((a1,a2,a3,a4,a5):rest  ) (a,b,c,d,e) = g rest (a1:a, a2:b, a3:c,  a4:d, e++[a5]) 
 >                              || 
