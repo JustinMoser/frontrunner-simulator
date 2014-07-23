@@ -114,10 +114,13 @@ It takes args (i) askbook (ii) askbook (iii) ordersize for ex1 (iv) ordersize fo
 >                                           ss1 = getordersize a1
 >                                           ss2 = getordersize a2
 
+
+Get order size from 1 item in the list result from decide orders
+
 >os :: (num,num) -> num
 >os (exchid,ordersize) = ordersize
 
-
+Get order exchange id from 1 item in the list result from decide orders 
 
 >oex :: (num,num) -> num
 >oex (exchid,ordersize) = exchid
@@ -132,24 +135,23 @@ i.e that it will try to fill the order in its entirety at current best price, in
 When one best ask has been filled, it will move onto the next best ask until the entire order has been filled.
  
 >broker xq (((bids1,asks1,sells1,buys1,xbids1,xasks1,xsells1,xbuys1,bestbid1,bestask1,ltp1,pp1,sellp1,buyp1,invs1):rest1),
->            (bids2,asks2,sells2,buys2,xbids2,xasks2,xsells2,xbuys2,bestbid2,bestask2,ltp2,pp2,sellp2,buyp2,invs2):rest2) oldinv starttime mosize time id
->                      = orders : (broker xq (rest1,rest2) newinv starttime mosize (time+1) id)
->                        where
->                        orders = [(bid1,ask1,sell1,buy1,newinv),(bid2,ask2,sell2,buy2,newinv)]
->                        bid1 = Order Bid 0 0 id time 0
->                        bid2 = Order Bid 0 0 id time 1
->                        ask1 = Order Ask 0 0 id time 0
->                        ask2 = Order Ask 0 0 id time 1
->                        buy1 = Order Buy (buysize1 decideorders) 0 id time 0, if((oldinv < mosize)&(time>=starttime))
->                             = Order Buy 0 0 id time 0, otherwise
->                        buy2 = Order Buy (buysize2 decideorders) 0 id time 1, if((oldinv < moszie)&(time>=starttime))
->                        buy2 = Order Buy 0 0 id time 1, otherwise
->                        sell1 = Order Sell 0 0 id time 0 
->                        sell2 = Order Sell 0 0 id time 1
->                        buysize1 orders = os (hd (orders))
->                        buysize2 orders = os (hd (tl (orders))) 
->      				     newinv = oldinv + (psi id xbids1) + (psi id xbuys1) - (psi id xasks1) - (psi id xsells1) + (psi id xbids2) + (psi id xbuys2) - (psi id xasks2) - (psi id xsells2)
->                        psi i os = foldr (+) 0 (map getordersize (filter ((=i).getorderid) os))
+>            ((bids2,asks2,sells2,buys2,xbids2,xasks2,xsells2,xbuys2,bestbid2,bestask2,ltp2,pp2,sellp2,buyp2,invs2):rest2)) oldinv starttime mosize time id
+>              = [(bid1,ask1,sell1,buy1,newinv),(bid2,ask2,sell2,buy2,newinv)] : (broker xq (rest1,rest2) newinv starttime mosize (time+1) id)
+>                where
+>                bid1 = Order Bid 0 0 id time 0
+>                bid2 = Order Bid 0 0 id time 1
+>                ask1 = Order Ask 0 0 id time 0
+>                ask2 = Order Ask 0 0 id time 1
+>                buy1 = Order Buy (buysize1 (decideorders asks1 asks2 0 0 mosize)) 0 id time 0, if((oldinv < mosize)&(time>=starttime))
+>                     = Order Buy 0 0 id time 0, otherwise
+>                buy2 = Order Buy (buysize2 (decideorders asks1 asks2 0 0 mosize)) 0 id time 1, if((oldinv < mosize)&(time>=starttime))
+>                buy2 = Order Buy 0 0 id time 1, otherwise
+>                sell1 = Order Sell 0 0 id time 0 
+>                sell2 = Order Sell 0 0 id time 1
+>                buysize1 (x:xs) = os x
+>                buysize2 (x:xs) = os (hd xs) 
+>      		     newinv = oldinv + (psi id xbids1) + (psi id xbuys1) - (psi id xasks1) - (psi id xsells1) + (psi id xbids2) + (psi id xbuys2) - (psi id xasks2) - (psi id xsells2)
+>                psi i os = foldr (+) 0 (map getordersize (filter ((=i).getorderid) os))
 
 
 
@@ -163,8 +165,8 @@ for this experinent
 
 
 >populator xq (((bids1,asks1,sells1,buys1,xbids1,xasks1,xsells1,xbuys1,bestbid1,bestask1,ltp1,pp1,sellp1,buyp1,invs1):rest1),
->               (bids2,asks2,sells2,buys2,xbids2,xasks2,xsells2,xbuys2,bestbid2,bestask2,ltp2,pp2,sellp2,buyp2,invs2):rest2) oldinv stoptime time id || Make sure stoptime = startime-1
->                = (bid, ask, sell, buy, newinv) : (populator xq (rest1,rest2) newinv stoptime (time+1) id)
+>              ((bids2,asks2,sells2,buys2,xbids2,xasks2,xsells2,xbuys2,bestbid2,bestask2,ltp2,pp2,sellp2,buyp2,invs2):rest2)) oldinv stoptime time id || Make sure stoptime = startime-1
+>                = [(bid, ask, sell, buy, newinv)] : (populator xq (rest1,rest2) newinv stoptime (time+1) id)
 >                  where
 >                  bid = Order Bid 0 0 id time exchid
 >                  ask = Order Ask (populator_sizes!time) (populator_prices!time) time id exchid, if (time < stoptime)
@@ -189,17 +191,20 @@ to the counterparty at a higher price. This is known as front-running.
 
 
 >frontrunner xq (((bids1,asks1,sells1,buys1,xbids1,xasks1,xsells1,xbuys1,bestbid1,bestask1,ltp1,pp1,sellp1,buyp1,invs1):rest1),
->              (bids2,asks2,sells2,buys2,xbids2,xasks2,xsells2,xbuys2,bestbid2,bestask2,ltp2,pp2,sellp2,buyp2,invs2):rest2) estsize oldinv time id
->              = (bid, ask, sell, buy, newinv) : (frontrunner xq (rest1,rest2) estsize newinv (time+1) id)
->                where
->                order1size= os (hd (decideorders asks1 asks2))
->                order2size = os (hd (tl (decideorders asks1 asks2)))
->                bid = Order Bid 0 0 id time 0
->                buy = Order Buy (estsize - order1size) bestask2 id time 1, if(order1size=(getordersize (hd xbuys1)))
->                ask = Order Ask (estsize - order1size) (newbestask asks2) id time 1
->                sell = Order Sell 0 0 id time 0
->                newbestask (x:xs) = 
->                newinv = oldinv + (psi id xbids1) + (psi id xbuys1) - (psi id xasks1) - (psi id xsells1) + (psi id xbids2) + (psi id xbuys2) - (psi id xasks2) - (psi id xsells2)
+>                ((bids2,asks2,sells2,buys2,xbids2,xasks2,xsells2,xbuys2,bestbid2,bestask2,ltp2,pp2,sellp2,buyp2,invs2):rest2)) oldinv estsize time id
+>                  = [(bid, ask, sell, buy, newinv)] : (frontrunner xq (rest1,rest2) oldinv estsize (time+1) id)
+>                    where
+>                    order1size = os (hd (decideorders asks1 asks2 0 0 estsize))
+>                    order2size = os (hd (tl (decideorders asks1 asks2 0 0 estsize)))
+>                    bid = Order Bid 0 0 id time 0
+>                    buy = Order Buy (estsize - order1size) 0 id time 1, if(order1size=(getordersize (hd xbuys1)))
+>                    ask = Order Ask (estsize - order1size) ((newbestask asks2 (estsize - order1size))-1) id time 1
+>                    sell = Order Sell 0 0 id time 0
+>                    newbestask (x:xs) buysize = (getorderprice (x)), if ((getordersize x)>buysize)
+>                                              = newbestask xs (buysize - (getordersize x)), otherwise
+>                    newinv = oldinv + (psi id xbids1) + (psi id xbuys1) - (psi id xasks1) - (psi id xsells1) + (psi id xbids2) + (psi id xbuys2) - (psi id xasks2) - (psi id xsells2)
+>                    psi i os = foldr (+) 0 (map getordersize (filter ((=i).getorderid) os))
+
 
 The exchange takes in lists of orders from the traders and produces the bestbid and bestask plus 
 lists of confirmations (and price, inventories, sellp and buyp for the graphs).   
@@ -208,7 +213,7 @@ The exchange also takes in and outputs its own bidbook and askbook.  The exchang
 >exch:: num -> [([order_t],[order_t],[order_t],[order_t],[num])]->num->[order_t]->[order_t] -> num 
 >           -> [([order_t],[order_t],[order_t],[order_t],[order_t],[order_t],[order_t],[order_t],num,num,num,[num],num,num,[num])] 
 >exch id ((allbids,allasks,allsells,allbuys,invs):rest) time bbook abook ltp 
->    = (bids,asks,sells,buys,xbids, xasks, xsells, xbuys, bb, ba, newltp, pp, sellp, buyp, invs): (exch id rest (time+1) newbbook newabook newltp) 
+>    = (bids,asks,sells,buys,xbids, xasks, xsells, xbuys, bb, ba, newltp, pp, sellp, buyp, invs) : (exch id rest (time+1) newbbook newabook newltp) 
 >      where 
 >      bids = (filter ((=id).getorderexchid) allbids)
 >      asks = (filter ((=id).getorderexchid) allasks)
@@ -305,7 +310,7 @@ Now we need to run a numerical simulation which uses the above definitions.
  
 >sim steps = f allexchstates steps 
 >            where 
->            allexchstates = (initexchstates : (exch 0 allmessages 1 [] [] startprice), initexchstates : (exch 1 allmessages 1 [] [] startprice)) 
+>            allexchstates = ((initexchstate : (exch 0 allmessages 1 [] [] startprice)), (initexchstate : (exch 1 allmessages 1 [] [] startprice))) 
 >            initexchstate = ([],[],[],[],[],[],[],[],startprice-(startspread/2),startprice+(startspread/2),startprice,[],0,0,[])  
 >                            || bids,asks,sells,buys,xbids,xasks,xsells,xbuys,bb,ba,ltp,pp,sellp,buyp,invs 
 >            allmessages    = mergedmessages 
@@ -316,15 +321,16 @@ Now we need to run a numerical simulation which uses the above definitions.
 >                             where 
 >                             f []         = [] 
 >                             f ([]:rest)  = []   || if any trader has stopped issuing messages, we halt the simulation 
->                             f any        = (g (map hd any) ([],   [],   [],    [],   []  )) : (f (map tl any)) 
+>                             f any        = (g (map hd any) [([], [], [], [], []), ([], [], [], [], [])]) : (f (map tl any)) 
 >                                                         || (bids, asks, sells, buys, invs)  
 >                                                         || All collected together for each time step 
 >                                                         || NB this does not depend on the number of traders - so it should work fine! 
 >                                                         || (I confused simplesim with big sim!) 
->                             g []                        (a,b,c,d,e) = (a,b,c,d,e) 
->                             g ((a1,a2,a3,a4,a5):rest  ) (a,b,c,d,e) = g rest (a1:a, a2:b, a3:c,  a4:d, e++[a5]) 
+>                             g [] [(a,b,c,d,e),(f,g,h,i,j)] = [(a,b,c,d,e),(f,j,h,i,j)]
+>                             g ([(bid1,ask1,buy1,sell1,inv1),(bid2,ask2,buy2,sell2,inv2)]:rest) [(bids1,asks1,buys1,sells1,invs1),(bids2,asks2,buys2,sells2,invs2)]
+>                                = g rest [(bid1:bids1, ask1:asks1, buy1:buys1, sell1:sells1, invs1++[inv1]),(bid2:bids2, ask2:asks2, buy2:buys2, sell2:sells2, invs2++[inv2])]
 >                              || 
->                              ||(agent1 output ):others)                      (bids, asks, sells, buys, invs) 
+>                              ||([(agent1 exch1 output),(agent1 exch2 output)]:others) [(bids1, asks1, buys1, sells1, invs1),(bids2, asks2, buys2, sells2, invs2)] 
 >                              || 
  
 >f (a,b) steps = (take steps a, take steps b)
@@ -418,8 +424,9 @@ the function "sim" will apply each of these to its start time and to its unique 
 (NB I changed the order of the arguments to mm and fs so this would work): 
  
 >agents agentinput = [
->                     bestprice_buyer initxq agentinput 0 buyer_start_time bestprice_mo_size,
->                     populator initxq agentinput 0 buyer_start_time
+>                     broker initxq agentinput 0 buyer_start_time broker_mo_size,
+>                     populator initxq agentinput 0 (buyer_start_time-1),
+>                     frontrunner initxq agentinput 0 broker_mo_size
 >                    ] 
 >                    where 
 >                    initxq = ([],[],[],[]) 
@@ -444,4 +451,4 @@ Other parameters for this experiment:
 >buyer_start_time = 10 || 10 
 >populator_sizes = [1500,800,1250,900,250,600,1720,500,300,175]
 >populator_prices = [55,57,62,68,71,75,52,65,54,66]
->bestprice_mo_size = 7000
+>broker_mo_size = 7000
