@@ -88,6 +88,7 @@ And here are some helper functions:
 >getorderexchid     (Order ty sz p i t exchid)       = exchid
 >setorderexchid     (Order ty sz p i t exchid) newexchid = Order ty sz p i t newexchid
 
+>selectmin f [] = error "selectmin applied to empty list"
 >selectmin f xs = foldl g (hd xs) xs
 >                 where
 >                 g a b = a, if(f a < f b)
@@ -96,6 +97,9 @@ And here are some helper functions:
 >volumeatexch::[order_t] -> [order_t] -> num -> num
 >volumeatexch (x:xs) (y:ys) vol = vol + (getordersize x) + (volumeatexch xs (y:ys) vol), if ((getorderprice x) < (getorderprice y))
 >                               = vol, otherwise
+
+>tracehd str [] = error str
+>tracehd str (x:xs) = x
 
 Here is a function to decide where to place Buy orders given two askbooks and a target order size
 It takes args (i) askbook (ii) askbook (iii) ordersize for ex1 (iv) ordersize for ex2 (v) targetordersize
@@ -125,6 +129,18 @@ Get order exchange id from 1 item in the list result from decide orders
 >oex :: (num,num) -> num
 >oex (exchid,ordersize) = exchid
 
+====================
+AGENT TYPE
+====================
+All trading agents must have the same type
+
+>agent_t * == ([*],[*],[*],[*]) -> ([exchoutput_t],[exchoutput_t]) -> inv_t -> startstoptime_t -> time_t -> id_t -> agentoutput_t
+>agentoutput_t ::= AgentOP [[ordertuple_t]]
+>ordertuple_t ::= Ordertuple (order_t, order_t, order_t, order_t, num)
+>inv_t == num
+>startstoptime_t == num
+>time_t == num
+>id_t == num
 
 ====================
 BROKER AGENT DETAILS
@@ -134,23 +150,27 @@ The broker has a fixed size order, from a client that needs to be executed as ma
 i.e that it will try to fill the order in its entirety at current best price, in blocks, across both exchanges. 
 When one best ask has been filled, it will move onto the next best ask until the entire order has been filled.
  
->broker xq (((bids1,asks1,sells1,buys1,xbids1,xasks1,xsells1,xbuys1,bestbid1,bestask1,ltp1,pp1,sellp1,buyp1,invs1):rest1),
->            ((bids2,asks2,sells2,buys2,xbids2,xasks2,xsells2,xbuys2,bestbid2,bestask2,ltp2,pp2,sellp2,buyp2,invs2):rest2)) oldinv starttime mosize time id
->              = [(bid1,ask1,sell1,buy1,newinv),(bid2,ask2,sell2,buy2,newinv)] : (broker xq (rest1,rest2) newinv starttime mosize (time+1) id)
+>broker :: agent_t *
+>broker xq (((ExchOP (bids1,asks1,sells1,buys1,xbids1,xasks1,xsells1,xbuys1,bestbid1,bestask1,ltp1,pp1,sellp1,buyp1,invs1)):rest1),
+>           ((ExchOP (bids2,asks2,sells2,buys2,xbids2,xasks2,xsells2,xbuys2,bestbid2,bestask2,ltp2,pp2,sellp2,buyp2,invs2)):rest2)) oldinv starttime time id
+>              = f [Ordertuple (bid1,ask1,sell1,buy1,newinv),Ordertuple (bid2,ask2,sell2,buy2,newinv)] (broker xq (rest1, rest2) newinv starttime (time+1) id)
 >                where
+>                f xs (AgentOP ys) = AgentOP (xs:ys)
 >                bid1 = Order Bid 0 0 id time 0
 >                bid2 = Order Bid 0 0 id time 1
 >                ask1 = Order Ask 0 0 id time 0
 >                ask2 = Order Ask 0 0 id time 1
->                buy1 = Order Buy (buysize1 (decideorders asks1 asks2 0 0 mosize)) 0 id time 0, if((oldinv < mosize)&(time>=starttime))
+>                buy1 = Order Buy (buysize1 (decideorders asks1 asks2 0 0 broker_mo_size)) 0 id time 0, if((oldinv < broker_mo_size)&(time>=starttime))
 >                     = Order Buy 0 0 id time 0, otherwise
->                buy2 = Order Buy (buysize2 (decideorders asks1 asks2 0 0 mosize)) 0 id time 1, if((oldinv < mosize)&(time>=starttime))
+>                buy2 = Order Buy (buysize2 (decideorders asks1 asks2 0 0 broker_mo_size)) 0 id time 1, if((oldinv < broker_mo_size)&(time>=starttime))
 >                buy2 = Order Buy 0 0 id time 1, otherwise
 >                sell1 = Order Sell 0 0 id time 0 
 >                sell2 = Order Sell 0 0 id time 1
 >                buysize1 (x:xs) = os x
->                buysize2 (x:xs) = os (hd xs) 
->      		     newinv = oldinv + (psi id xbids1) + (psi id xbuys1) - (psi id xasks1) - (psi id xsells1) + (psi id xbids2) + (psi id xbuys2) - (psi id xasks2) - (psi id xsells2)
+>                buysize2 []     = error "buysize2 applied to empty list"
+>                buysize2 [x]    = error "buysize2 applied to list with only one element"
+>                buysize2 (x:xs) = os (tracehd "buysize2" xs) 
+>      	         newinv = oldinv + (psi id xbids1) + (psi id xbuys1) - (psi id xasks1) - (psi id xsells1) + (psi id xbids2) + (psi id xbuys2) - (psi id xasks2) - (psi id xsells2)
 >                psi i os = foldr (+) 0 (map getordersize (filter ((=i).getorderid) os))
 
 
@@ -164,10 +184,12 @@ up until the broker agent begins issuing buy orders. This creates liquidity
 for this experinent
 
 
->populator xq (((bids1,asks1,sells1,buys1,xbids1,xasks1,xsells1,xbuys1,bestbid1,bestask1,ltp1,pp1,sellp1,buyp1,invs1):rest1),
->              ((bids2,asks2,sells2,buys2,xbids2,xasks2,xsells2,xbuys2,bestbid2,bestask2,ltp2,pp2,sellp2,buyp2,invs2):rest2)) oldinv stoptime time id || Make sure stoptime = startime-1
->                = [(bid, ask, sell, buy, newinv)] : (populator xq (rest1,rest2) newinv stoptime (time+1) id)
+>populator :: agent_t *
+>populator xq ((ExchOP (bids1,asks1,sells1,buys1,xbids1,xasks1,xsells1,xbuys1,bestbid1,bestask1,ltp1,pp1,sellp1,buyp1,invs1):rest1),
+>              (ExchOP (bids2,asks2,sells2,buys2,xbids2,xasks2,xsells2,xbuys2,bestbid2,bestask2,ltp2,pp2,sellp2,buyp2,invs2):rest2)) oldinv stoptime time id || Make sure stoptime = startime-1
+>                = f [Ordertuple (bid, ask, sell, buy, newinv)] (populator xq (rest1, rest2) newinv stoptime (time+1) id)
 >                  where
+>                  f xs (AgentOP ys) = AgentOP (xs:ys)
 >                  bid = Order Bid 0 0 id time exchid
 >                  ask = Order Ask (populator_sizes!time) (populator_prices!time) time id exchid, if (time < stoptime)
 >                      = Order Ask 0 0 id time exchid, otherwise
@@ -190,14 +212,18 @@ and look to pre empt their order at best ask price across exchanges, thus giving
 to the counterparty at a higher price. This is known as front-running.
 
 
->frontrunner xq (((bids1,asks1,sells1,buys1,xbids1,xasks1,xsells1,xbuys1,bestbid1,bestask1,ltp1,pp1,sellp1,buyp1,invs1):rest1),
->                ((bids2,asks2,sells2,buys2,xbids2,xasks2,xsells2,xbuys2,bestbid2,bestask2,ltp2,pp2,sellp2,buyp2,invs2):rest2)) oldinv estsize time id
->                  = [(bid, ask, sell, buy, newinv)] : (frontrunner xq (rest1,rest2) oldinv estsize (time+1) id)
+>frontrunner :: agent_t *
+>frontrunner xq ((ExchOP (bids1,asks1,sells1,buys1,xbids1,xasks1,xsells1,xbuys1,bestbid1,bestask1,ltp1,pp1,sellp1,buyp1,invs1):rest1),
+>                (ExchOP (bids2,asks2,sells2,buys2,xbids2,xasks2,xsells2,xbuys2,bestbid2,bestask2,ltp2,pp2,sellp2,buyp2,invs2):rest2)) oldinv starttime time id
+>                  = f [Ordertuple (bid, ask, sell, buy, newinv)] (frontrunner xq (rest1, rest2) oldinv starttime (time+1) id)
 >                    where
->                    order1size = os (hd (decideorders asks1 asks2 0 0 estsize))
->                    order2size = os (hd (tl (decideorders asks1 asks2 0 0 estsize)))
+>                    f xs (AgentOP ys) = AgentOP (xs:ys)
+>                    estsize = broker_mo_size
+>                    order1size = os (tracehd "frontrunner:order1size" (decideorders asks1 asks2 0 0 estsize))
+>                    || order2size = os (tracehed "frontrunner:order2size" (tl (decideorders asks1 asks2 0 0 estsize)))
 >                    bid = Order Bid 0 0 id time 0
->                    buy = Order Buy (estsize - order1size) 0 id time 1, if(order1size=(getordersize (hd xbuys1)))
+>                    buy = Order Buy (estsize - order1size) 0 id time 1, if (xbuys1 ~= []) & (order1size=(getordersize (tracehd "frontrunner:buy" xbuys1)))
+>                        = error "TODO: Need to decide Buy logic in this case", otherwise
 >                    ask = Order Ask (estsize - order1size) ((newbestask asks2 (estsize - order1size))-1) id time 1
 >                    sell = Order Sell 0 0 id time 0
 >                    newbestask (x:xs) buysize = (getorderprice (x)), if ((getordersize x)>buysize)
@@ -206,14 +232,19 @@ to the counterparty at a higher price. This is known as front-running.
 >                    psi i os = foldr (+) 0 (map getordersize (filter ((=i).getorderid) os))
 
 
+==========================
+EXCHANGE AGENT DETAILS
+==========================
+
 The exchange takes in lists of orders from the traders and produces the bestbid and bestask plus 
 lists of confirmations (and price, inventories, sellp and buyp for the graphs).   
 The exchange also takes in and outputs its own bidbook and askbook.  The exchange has id 0. 
  
+>exchoutput_t ::= ExchOP ([order_t],[order_t],[order_t],[order_t],[order_t],[order_t],[order_t],[order_t],num,num,num,[num],num,num,[num])
 >exch:: num -> [([order_t],[order_t],[order_t],[order_t],[num])]->num->[order_t]->[order_t] -> num 
->           -> [([order_t],[order_t],[order_t],[order_t],[order_t],[order_t],[order_t],[order_t],num,num,num,[num],num,num,[num])] 
+>           -> [exchoutput_t]
 >exch id ((allbids,allasks,allsells,allbuys,invs):rest) time bbook abook ltp 
->    = (bids,asks,sells,buys,xbids, xasks, xsells, xbuys, bb, ba, newltp, pp, sellp, buyp, invs) : (exch id rest (time+1) newbbook newabook newltp) 
+>    = (ExchOP (bids,asks,sells,buys,xbids, xasks, xsells, xbuys, bb, ba, newltp, pp, sellp, buyp, invs)):  (exch id rest (time+1) newbbook newabook newltp) 
 >      where 
 >      bids = (filter ((=id).getorderexchid) allbids)
 >      asks = (filter ((=id).getorderexchid) allasks)
@@ -272,9 +303,9 @@ The exchange also takes in and outputs its own bidbook and askbook.  The exchang
 >      sellp = (foldr (+) 0 (map getordersize sells)) /(1+ (foldr (+) 0 (map getordersize bbook1))) 
 >      buyp = (foldr (+) 0 (map getordersize buys)) / (1+ (foldr (+) 0 (map getordersize abook1))) 
 >      bb = 0, if (newbbook = []) 
->         = getorderprice (hd newbbook), otherwise 
+>         = getorderprice (tracehd "exch:bb" newbbook), otherwise 
 >      ba = 0, if (newabook = []) 
->         = getorderprice (hd newabook), otherwise 
+>         = getorderprice (tracehd "exch:ba" newabook), otherwise 
 >      pp = interleave xbuys xsells || assume interleaved selling and buying 
 >           where 
 >           interleave []     ys     = map getorderprice ys 
@@ -307,51 +338,98 @@ We will need a delay component as follows:
  
  
 Now we need to run a numerical simulation which uses the above definitions. 
+The function "sim" takes a number of timesteps and returns a pair of exchange outputs (one for each exchange)
  
+>sim::num->([exchoutput_t],[exchoutput_t])
 >sim steps = f allexchstates steps 
 >            where 
->            allexchstates = ((initexchstate : (exch 0 allmessages 1 [] [] startprice)), (initexchstate : (exch 1 allmessages 1 [] [] startprice))) 
->            initexchstate = ([],[],[],[],[],[],[],[],startprice-(startspread/2),startprice+(startspread/2),startprice,[],0,0,[])  
->                            || bids,asks,sells,buys,xbids,xasks,xsells,xbuys,bb,ba,ltp,pp,sellp,buyp,invs 
->            allmessages    = mergedmessages 
->            tradermessages = map g (zip2 (agents allexchstates) [1..]) 
+>            f (a, b) steps = ((take steps a), (take steps b))
+>            ||
+>            || allexchstates is a two-tuple created by calling the two exchanges
+>            || each exchange output is prepended with an initial state
+>            || each exchange function is applied to an ID (0 or 1), the combined messages from all agents (allmessages),
+>            || a start time (1), two initial states (both []) and a startprice for the market 
+>            ||
+>            || allexchstates :: (exchoutput_t, exchoutput_t)
+>            allexchstates = (initexchstate:(exch 0 mergedmessages 1 [] [] startprice), initexchstate:(exch 1 mergedmessages 1 [] [] startprice)) 
+>            ||
+>            || initexchstate is the initial state prepended to both exchange outputs
+>            || initexchstate :: exchoutput_t
+>            ||
+>            initexchstate = ExchOP (  [],  [],  [],   [],  [],   [],   [],    [],   startprice-(startspread/2),startprice+(startspread/2),startprice,[], 0,    0,   [])  
+>            ||                        bids,asks,sells,buys,xbids,xasks,xsells,xbuys,bb,                        ba,                        ltp,        pp,sellp,buyp,invs 
+>            ||
+>            || mergedmessages :: [([order_t],[order_t],[order_t],[order_t],[num])]
+>            || mergedmessages is the result of transposing the list of agent outputs and then grouping the messages
+>            || the messages are grouped into a 5-tuple of bids, asks, sells, buys, and invs
+>            || thus, the resulting list has as its first item a 5-tuple containing all bids, asks, sells, buys and invs sent in the first time step
+>            ||
+>            mergedmessages = map (mygroup initgroups) (mytranspose tradermessages)
 >                             where 
->                             g (f,id) = f 0 id 
->            mergedmessages = f tradermessages 
->                             where 
->                             f []         = [] 
->                             f ([]:rest)  = []   || if any trader has stopped issuing messages, we halt the simulation 
->                             f any        = (g (map hd any) [([], [], [], [], []), ([], [], [], [], [])]) : (f (map tl any)) 
->                                                         || (bids, asks, sells, buys, invs)  
->                                                         || All collected together for each time step 
->                                                         || NB this does not depend on the number of traders - so it should work fine! 
->                                                         || (I confused simplesim with big sim!) 
->                             g [] [(a,b,c,d,e),(f,g,h,i,j)] = [(a,b,c,d,e),(f,j,h,i,j)]
->                             g ([(bid1,ask1,buy1,sell1,inv1),(bid2,ask2,buy2,sell2,inv2)]:rest) [(bids1,asks1,buys1,sells1,invs1),(bids2,asks2,buys2,sells2,invs2)]
->                                = g rest [(bid1:bids1, ask1:asks1, buy1:buys1, sell1:sells1, invs1++[inv1]),(bid2:bids2, ask2:asks2, buy2:buys2, sell2:sells2, invs2++[inv2])]
->                              || 
->                              ||([(agent1 exch1 output),(agent1 exch2 output)]:others) [(bids1, asks1, buys1, sells1, invs1),(bids2, asks2, buys2, sells2, invs2)] 
->                              || 
+>                             ||
+>                             || tradermessage is a list of outputs from the agents
+>                             || constructed by zipping partial applications of the agents with their IDs
+>                             || this creates a list of two-tuples, each containing a partial application and an ID
+>                             || then a local function "g" is mapped over the list ("g" supplies the final two args to each agent function)
+>                             || this gives a list containing the outputs from every output
+>                             || tradermessage :: [agentoutput_t]
+>                             ||
+>                             tradermessages = map g (zip2 (agents allexchstates) [1..]) 
+>                                              where 
+>                                              g (f,id) = f 0 id 
+>                             ||
+>                             || the function mytranspose is a customised version of the standard function transpose (see Sec 28 of the manual)
+>                             || NB the agent outputs are of type agentoutput_t and so we use functions "agentophd" and "agentoptl" to get the heads and tails.
+>                             || it terminates early if any agent stops sending output
+>                             || the result is a (possibly infinite) list where the first item is all the messages to the exchanges at the first timestep,
+>                             || and the next item is those messages at the second timestep, and so on
+>                             ||
+>                             mytranspose []  = []
+>                             mytranspose any = [], if (member any (AgentOP [])) || if any trader has stopped issuing messages, we halt the simulation
+>                                             = (map agentophd any) : (mytranspose (map agentoptl any)), otherwise
+>                                               where
+>                                               agentophd (AgentOP []) = error "found empty list in agentophd, subdef of mytranspose"
+>                                               agentophd (AgentOP xs) = hd xs
+>                                               agentoptl (AgentOP []) = error "found empty list in agentophd, subdef of mytranspose"
+>                                               agentoptl (AgentOP xs) = AgentOP (tl xs)
+>                             ||
+>                             || the function mygroup is applied to the transposed tradermessages to create the mergedmessages
+>                             || it is applied to a list of outputs from all agents at one timestep - each agent issues a list of ordertuples
+>                             || so mygroup is applied to a list of lists of ordertuples
+>                             || it takes the agent output WITHOUT the AgentOP constructor - this should be a list of  ordertuple_t
+>                             || Notice that after grouping the Ordertuple constructor is lost - so the exchange sees raw bids, asks etc
+>                             ||           the groups are initialised to be empty
+>                             ||           (bids, asks, sells, buys, invs)  
+>                             ||
+>                             initgroups = ([],   [],   [],    [],   [])
+>                             ||
+>                             mygroup acc []     = acc
+>                             mygroup acc (x:xs) = mygroup (g acc x) xs
+>                                                  where
+>                                                  g (bids, asks, sells, buys, invs) []                                = (bids, asks, sells, buys, invs)
+>                                                  g (bids, asks, sells, buys, invs) ((Ordertuple (bi,a,s,bu,i)):rest) = g ((bi:bids), (a:asks), (s:sells), (bu:buys), (i:invs)) rest
  
->f (a,b) steps = (take steps a, take steps b)
 
 And now finally we need to output the sim results to file 
  
->runtest steps = [Tofile "simplesim12mm.csv" (hdrs ++ (g startprice 0 (sim steps))), Closefile "simplesim2mm.csv", System "/Applications/Microsoft \\Office\\ 2011/Microsoft\\ Excel.app/Contents/MacOS/Microsoft\\ Excel &" ] 
+>runtest steps = [Tofile "simplesim12mm.csv" (hdrs ++ (g startprice 0 (sim steps))), 
+>                 Closefile "simplesim2mm.csv", 
+>                 System "/Applications/Microsoft \\Office\\ 2011/Microsoft\\ Excel.app/Contents/MacOS/Microsoft\\ Excel &" ] 
 >                where 
 >                ||hdrs = "Price,SellPressure,BuyPressure,Inv5,Inv4,Inv3,Inv2,Inv1" 
->                hdrs = "Time,Bids,Asks,Buys,Sells,BidPrice1,BidPrice2,AskPrice1,AskPrice2,AskSize1,Asksize2,BuySize1,BuySize2,SellSize1,SellSize2,Price,SellPressure,BuyPressure,Net Pressure,BestBid,BestAsk,Invs\n"
->                g p t ([],[])     = []
->                g p t ([],b)      = []
->                g p t (a,[])      = []
->                g p t (a:aa,b:bb) = output ++ (g ltp (t+1) (aa,bb)) 
->                                    where 
->                                    output = output1 ++ output2
->                                    ltp = ltp2          || chosen arbritrarily
->                                    (output1,ltp1) = h p t a
->                                    (output2,ltp2) = h p t b
->                h p t (bids,asks,sells,buys,xbids,xasks,xsells,xbuys,bb,ba,ltp,pp,sellp,buyp,invs) 
->                         = k  
+>                hdrs = "Time,Bids,Asks,Buys,Sells,BidPrice1,BidPrice2,AskPrice1,AskPrice2,AskSize1,Asksize2,BuySize1,BuySize2,SellSize1,SellSize2,"
+>                       ++ "Price,SellPressure,BuyPressure,Net Pressure,BestBid,BestAsk,Invs\n"
+>                g p t ([], [])         = []
+>                g p t ([], b)          = []
+>                g p t (a, [])          = []
+>                g p t ((a:aa), (b:bb)) = output ++ (g ltp (t+1) (aa, bb)) 
+>                                         where 
+>                                         output = output1 ++ output2
+>                                         ltp = ltp2          || chosen arbritrarily
+>                                         (output1,ltp1) = h p t a
+>                                         (output2,ltp2) = h p t b
+>                h p t (ExchOP (bids,asks,sells,buys,xbids,xasks,xsells,xbuys,bb,ba,ltp,pp,sellp,buyp,invs))
+>                         = k
 >                             (foldr (+) 0 (map getordersize bids))  || Bids
 >                             (foldr (+) 0 (map getordersize asks))  || Asks
 >                             (foldr (+) 0 (map getordersize buys))  || Buys
@@ -360,12 +438,12 @@ And now finally we need to output the sim results to file
 >                             ((getorderprice.safehd) (filter ((=2).getorderid) bids))  || BidPrice2
 >                             ((getorderprice.safehd) (filter ((=1).getorderid) asks))  || AskPrice1
 >                             ((getorderprice.safehd) (filter ((=2).getorderid) asks))  || AskPrice2
->                             ((getordersize.safehd) (filter ((=1).getorderid) asks))   || AskSize1
->                             ((getordersize.safehd) (filter ((=2).getorderid) asks))   || AskSize2
->                             ((getordersize.safehd) (filter ((=1).getorderid) buys))   || BuySize1
->                             ((getordersize.safehd) (filter ((=2).getorderid) buys))   || BuySize2
->                             ((getordersize.safehd) (filter ((=1).getorderid) sells))  || SellSize1
->                             ((getordersize.safehd) (filter ((=2).getorderid) sells))  || SellSize2
+>                             ((getordersize.safehd)  (filter ((=1).getorderid) asks))   || AskSize1
+>                             ((getordersize.safehd)  (filter ((=2).getorderid) asks))   || AskSize2
+>                             ((getordersize.safehd)  (filter ((=1).getorderid) buys))   || BuySize1
+>                             ((getordersize.safehd)  (filter ((=2).getorderid) buys))   || BuySize2
+>                             ((getordersize.safehd)  (filter ((=1).getorderid) sells))  || SellSize1
+>                             ((getordersize.safehd)  (filter ((=2).getorderid) sells))  || SellSize2
 >                             sellp || SellPressure
 >                             buyp  || BuyPressure
 >                             bb    || BestBid
@@ -374,12 +452,12 @@ And now finally we need to output the sim results to file
 >                             pp    || Prices
 >                             ltp   || LastTradePrice
 >                           where 
->                           safehd [] = Order Bid 0 0 0 0 
+>                           safehd [] = Order Bid 0 0 0 0 0
 >                           safehd (x:xs) = x 
 >                           showwithcommas []     = "" 
 >                           showwithcommas [x]    = (shownum x) 
 >                           showwithcommas (x:xs) = (shownum x)++","++(showwithcommas xs) 
-                         
+                          
                             k  =
                                 bi = bids
                                 as = asks
@@ -424,9 +502,9 @@ the function "sim" will apply each of these to its start time and to its unique 
 (NB I changed the order of the arguments to mm and fs so this would work): 
  
 >agents agentinput = [
->                     broker initxq agentinput 0 buyer_start_time broker_mo_size,
->                     populator initxq agentinput 0 (buyer_start_time-1),
->                     frontrunner initxq agentinput 0 broker_mo_size
+>                     broker      initxq agentinput 0  buyer_start_time,           || NOTE all agents must ahve the same type - eg the same number of args 
+>                     populator   initxq agentinput 0 (buyer_start_time-1),        || NOTE all agents must ahve the same type - eg the same number of args 
+>                     frontrunner initxq agentinput 0  buyer_start_time            || NOTE all agents must ahve the same type - eg the same number of args 
 >                    ] 
 >                    where 
 >                    initxq = ([],[],[],[]) 
@@ -442,11 +520,11 @@ Other parameters for this experiment:
 >delaytime2 = 130 
 >delta3 = 6 || 4 
 >delaytime3 = 170 
->startprice = 1113 
->startspread =20 
->fsellsize =500 ||2500 || 4000 
->fstoptime = 180 
->market_order_size = 177 
+>startprice=1113 
+>startspread=20 
+>fsellsize=500 ||2500 || 4000 
+>fstoptime= 180 
+>market_order_size= 177 
 >mmsizes = [1650,200,20,-20,40,-40,60,-60,80,-80,100,-100] || [3300,20,-20,40,-40,60,-60,0,0,800,-800,0] 
 >buyer_start_time = 10 || 10 
 >populator_sizes = [1500,800,1250,900,250,600,1720,500,300,175]
