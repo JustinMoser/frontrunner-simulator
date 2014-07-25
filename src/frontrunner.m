@@ -223,8 +223,7 @@ to the counterparty at a higher price. This is known as front-running.
 >                    order2size = os (tracehd "frontrunner:order2size" (tl (decideorders asks1 asks2 0 0 estsize)))
 >                    bid = Order Bid 0 0 id time 0
 >                    buy = Order Buy (estsize - order1size) 0 id time 1, if (xbuys1 ~= []) & (order1size=(getordersize (tracehd "frontrunner:buy_exch1" xbuys1)))
->                        = Order Buy (estsize - order2size) 0 id time 0, if (xbuys2 ~= []) & (order2size=(getordersize (tracehd "frontrunner:buy_exch2" xbuys2)))
->                        = Order Buy 0 0 id time 0, otherwise || TODO: implement proper logic!
+>                        = error "TODO: implement remaining case!", otherwise 
 >                    ask = Order Ask (estsize - order1size) ((newbestask asks2 (estsize - order1size))-1) id time 1
 >                    sell = Order Sell 0 0 id time 0
 >                    newbestask (x:xs) buysize = (getorderprice (x)), if ((getordersize x)>buysize)
