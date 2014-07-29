@@ -98,6 +98,15 @@ And here are some helper functions:
 >volumeatexch (x:xs) (y:ys) vol = vol + (getordersize x) + (volumeatexch xs (y:ys) vol), if ((getorderprice x) < (getorderprice y))
 >                               = vol, otherwise
 
+>print_int n = show (decode (n + code '0'))
+
+>tracebook :: [order_t] -> num -> num
+>tracebook [] count = count
+>tracebook (x:xs) count = (tracebook xs (count+1))
+
+>tracebooks::[order_t] -> [order_t] -> [char] -> [char] 
+>tracebooks asks1 asks2 str = "AskBook 1 Count: " ++ print_int (tracebook asks1 0) ++ " " ++ "AskBook 2 Count: " ++ print_int (tracebook asks2 0) ++ "---" ++ str
+
 >tracehd str [] = error str
 >tracehd str (x:xs) = x
 
@@ -167,8 +176,8 @@ When one best ask has been filled, it will move onto the next best ask until the
 >                sell1 = Order Sell 0 0 id time 0 
 >                sell2 = Order Sell 0 0 id time 1
 >                buysize1 (x:xs) = os x
->                buysize2 []     = error "buysize2 applied to empty list"
->                buysize2 [x]    = error "buysize2 applied to list with only one element"
+>                buysize2 []     = error (tracebooks asks1 asks2 "buysize2 applied to empty list")
+>                buysize2 [x]    = error (tracebooks asks1 asks2 "buysize2 applied to list with only one element")
 >                buysize2 (x:xs) = os (tracehd "buysize2" xs) 
 >      	         newinv = oldinv + (psi id xbids1) + (psi id xbuys1) - (psi id xasks1) - (psi id xsells1) + (psi id xbids2) + (psi id xbuys2) - (psi id xasks2) - (psi id xsells2)
 >                psi i os = foldr (+) 0 (map getordersize (filter ((=i).getorderid) os))
@@ -191,10 +200,10 @@ for this experinent
 >                  where
 >                  f xs (AgentOP ys) = AgentOP (xs:ys)
 >                  bid = Order Bid 0 0 id time exchid
->                  ask = Order Ask (populator_sizes!time) (populator_prices!time) time id exchid, if (time < stoptime)
+>                  ask = Order Ask (populator_sizes!time) (populator_prices!time) time id exchid, if (time <= stoptime)
 >                      = Order Ask 0 0 id time exchid, otherwise
 >                  buy = Order Buy 0 0 id time exchid
->                  sell = Order Sell 0 0 id time exchid
+>                  sell = Order Sell 0 0 id time exchid 
 >                  exchid = 0, if ((time mod 2) = 0)
 >                         = 1, otherwise
 >                  newinv = oldinv + (psi id xbids1) + (psi id xbuys1) - (psi id xasks1) - (psi id xsells1) + (psi id xbids2) + (psi id xbuys2) - (psi id xasks2) - (psi id xsells2)
@@ -215,18 +224,21 @@ to the counterparty at a higher price. This is known as front-running.
 >frontrunner :: agent_t *
 >frontrunner xq ((ExchOP (bids1,asks1,sells1,buys1,xbids1,xasks1,xsells1,xbuys1,bestbid1,bestask1,ltp1,pp1,sellp1,buyp1,invs1):rest1),
 >                (ExchOP (bids2,asks2,sells2,buys2,xbids2,xasks2,xsells2,xbuys2,bestbid2,bestask2,ltp2,pp2,sellp2,buyp2,invs2):rest2)) oldinv starttime time id
->                  = f [Ordertuple (bid, ask, sell, buy, newinv)] (frontrunner xq (rest1, rest2) oldinv starttime (time+1) id)
+>                  = f order_for_timestep (frontrunner xq (rest1, rest2) oldinv starttime (time+1) id)
 >                    where
 >                    f xs (AgentOP ys) = AgentOP (xs:ys)
 >                    estsize = broker_mo_size
 >                    order1size = os (tracehd "frontrunner:order1size" (decideorders asks1 asks2 0 0 estsize))
->                    order2size = os (tracehd "frontrunner:order2size" (tl (decideorders asks1 asks2 0 0 estsize)))
+>                    order_for_timestep = [Ordertuple (bid, ask, buy, sell, newinv)], if(xbuys1 ~= [])&(order1size=(getordersize (tracehd "frontrunner:buy_exch1" xbuys1)))
+>                                       = [], otherwise
 >                    bid = Order Bid 0 0 id time 0
->                    buy = Order Buy (estsize - order1size) 0 id time 1, if (xbuys1 ~= []) & (order1size=(getordersize (tracehd "frontrunner:buy_exch1" xbuys1)))
->                        = error "TODO: implement remaining case!", otherwise 
->                    ask = Order Ask (estsize - order1size) ((newbestask asks2 (estsize - order1size))-1) id time 1
+>                    buy = Order Buy (estsize - order1size) 0 id time 1
+>                    ask = Order Ask (estsize - order1size) (newbestask asks2 (estsize - order1size)) id time 1
 >                    sell = Order Sell 0 0 id time 0
->                    newbestask (x:xs) buysize = (getorderprice (x)), if ((getordersize x)>buysize)
+>                    newbestask [] buysize  = ltp2 * 2
+>                    newbestask [x] buysize = (getorderprice x), if ((getordersize x)>=buysize)
+>                                           = newbestask [] (buysize - (getordersize x)), otherwise
+>                    newbestask (x:xs) buysize = ((getorderprice x)-1), if ((getordersize x)>=buysize)
 >                                              = newbestask xs (buysize - (getordersize x)), otherwise
 >                    newinv = oldinv + (psi id xbids1) + (psi id xbuys1) - (psi id xasks1) - (psi id xsells1) + (psi id xbids2) + (psi id xbuys2) - (psi id xasks2) - (psi id xsells2)
 >                    psi i os = foldr (+) 0 (map getordersize (filter ((=i).getorderid) os))
