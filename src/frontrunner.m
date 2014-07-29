@@ -233,13 +233,13 @@ to the counterparty at a higher price. This is known as front-running.
 >                                       = [], otherwise
 >                    bid = Order Bid 0 0 id time 0
 >                    buy = Order Buy (estsize - order1size) 0 id time 1
->                    ask = Order Ask (estsize - order1size) (newbestask asks2 (estsize - order1size)) id time 1
+>                    ask = Order Ask (estsize - order1size) (newbestask asks2 (estsize - order1size) 0) id time 1
 >                    sell = Order Sell 0 0 id time 0
->                    newbestask [] buysize  = ltp2 * 2
->                    newbestask [x] buysize = (getorderprice x), if ((getordersize x)>=buysize)
->                                           = newbestask [] (buysize - (getordersize x)), otherwise
->                    newbestask (x:xs) buysize = ((getorderprice x)-1), if ((getordersize x)>=buysize)
->                                              = newbestask xs (buysize - (getordersize x)), otherwise
+>                    newbestask [] buysize lastask = lastask * 2
+>                    newbestask [x] buysize lastask = (getorderprice x), if ((getordersize x)>=buysize)
+>                                                   = newbestask [] (buysize - (getordersize x)) (getorderprice x), otherwise
+>                    newbestask (x:xs) buysize lastask  = ((getorderprice x)-1), if ((getordersize x)>=buysize)
+>                                                       = newbestask xs (buysize - (getordersize x)) (getorderprice x), otherwise
 >                    newinv = oldinv + (psi id xbids1) + (psi id xbuys1) - (psi id xasks1) - (psi id xsells1) + (psi id xbids2) + (psi id xbuys2) - (psi id xasks2) - (psi id xsells2)
 >                    psi i os = foldr (+) 0 (map getordersize (filter ((=i).getorderid) os))
 
