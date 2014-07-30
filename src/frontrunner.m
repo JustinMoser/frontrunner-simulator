@@ -88,45 +88,75 @@ And here are some helper functions:
 >getorderexchid     (Order ty sz p i t exchid)       = exchid
 >setorderexchid     (Order ty sz p i t exchid) newexchid = Order ty sz p i t newexchid
 
->selectmin f [] = error "selectmin applied to empty list"
->selectmin f xs = foldl g (hd xs) xs
->                 where
->                 g a b = a, if(f a < f b)
->                       = b, otherwise
+=========================
+STRING HELPER FUNCTIONS
+=========================
 
->volumeatexch::[order_t] -> [order_t] -> num -> num
->volumeatexch (x:xs) (y:ys) vol = vol + (getordersize x) + (volumeatexch xs (y:ys) vol), if ((getorderprice x) < (getorderprice y))
->                               = vol, otherwise
+>string == [char]
+>int_to_string :: num -> string
+>int_to_string n = "-" ++ pos_to_string (abs n), if n < 0
+>                = pos_to_string n, otherwise
 
->print_int n = show (decode (n + code '0'))
+>pos_to_string :: num -> string
+>pos_to_string n = int_to_char n, if n < 10
+>                = pos_to_string (n div 10) ++ (int_to_char (n mod 10)), otherwise
 
->tracebook :: [order_t] -> num -> num
->tracebook [] count = count
->tracebook (x:xs) count = (tracebook xs (count+1))
+>int_to_char :: num -> string
+>int_to_char n = show (decode (n + code '0'))
 
->tracebooks::[order_t] -> [order_t] -> [char] -> [char] 
->tracebooks asks1 asks2 str = "AskBook 1 Count: " ++ print_int (tracebook asks1 0) ++ " " ++ "AskBook 2 Count: " ++ print_int (tracebook asks2 0) ++ "---" ++ str
+
+========================
+DEBUG HELPER FUNCTIONS
+========================
+
+>bookcount :: [order_t] -> num -> num
+>bookcount [] count = count
+>bookcount (x:xs) count = (bookcount xs (count+1))
+
+>tracebooks :: [order_t] -> [order_t] -> [char] -> (num,num) -> [char] 
+>tracebooks asks1 asks2 str (exchid,os) = "AskBook1 #: " ++ int_to_string (bookcount asks1 0) ++ " " ++ "AskBook2 #: " ++ int_to_string (bookcount asks2 0) ++ " --- " ++ str ++ ": " ++ "(" ++ int_to_string exchid ++ "," ++ int_to_string os ++ ")"
 
 >tracehd str [] = error str
 >tracehd str (x:xs) = x
+
+
+============================
+ORDER BOOK HELPER FUNCTIONS
+============================
 
 Here is a function to decide where to place Buy orders given two askbooks and a target order size
 It takes args (i) askbook (ii) askbook (iii) ordersize for ex1 (iv) ordersize for ex2 (v) targetordersize
 
 >decideorders :: [order_t]  -> [order_t] -> num -> num -> num -> [(num, num)]
->decideorders as1      as2      s1 s2 0   = [(1,s1), (2,s2)]
->decideorders []       as2      0  s2 inv = [(2,s2+inv)]
->decideorders []       as2      s1 s2 inv = [(1,s1), (2,s2+inv)]
->decideorders as1      []       s1 0  inv = [(1,s1+inv)]
->decideorders as1      []       s1 s2 inv = [(1,s1+inv), (2,s2)]
->decideorders (a1:as1) (a2:as2) s1 s2 inv = decideorders as1      (a2:as2) (s1+ss1) s2       (inv-ss1), if (p1<p2)||((p1=p2)&(ss1>=ss2))
->                                         = decideorders (a1:as1) as2      s1       (s2+ss2) (inv-ss2), otherwise
+>decideorders as1      as2      s1 s2 0   = [(0,s1), (1,s2)]
+>decideorders []       as2      0  s2 inv = [(1,s2+inv)]
+>decideorders []       as2      s1 s2 inv = [(0,s1), (1,s2+inv)]
+>decideorders as1      []       s1 0  inv = [(0,s1+inv)]
+>decideorders as1      []       s1 s2 inv = [(0,s1+inv), (1,s2)]
+>decideorders (a1:as1) (a2:as2) s1 s2 inv = decideorders as1 (a2:as2) (s1+ss1) s2 (inv-ss1), if (p1<p2)||((p1=p2)&(ss1>=ss2))
+>                                         = decideorders (a1:as1) as2 s1 (s2+ss2) (inv-ss2), otherwise
 >                                           where
 >                                           p1  = getorderprice a1
 >                                           p2  = getorderprice a2
 >                                           ss1 = getordersize a1
 >                                           ss2 = getordersize a2
 
+
+
+This function takes the lowest value from a list of numbers
+
+>selectmin f [] = error "selectmin applied to empty list"
+>selectmin f xs = foldl g (hd xs) xs
+>                 where
+>                 g a b = a, if(f a < f b)
+>                       = b, otherwise
+
+
+This function returns an ordersize for the first askbook before the ask price becomes worst than the second askbook
+
+>volumeatexch::[order_t] -> [order_t] -> num -> num
+>volumeatexch (x:xs) (y:ys) vol = vol + (getordersize x) + (volumeatexch xs (y:ys) vol), if ((getorderprice x) < (getorderprice y))
+>                               = vol, otherwise
 
 Get order size from 1 item in the list result from decide orders
 
@@ -176,8 +206,8 @@ When one best ask has been filled, it will move onto the next best ask until the
 >                sell1 = Order Sell 0 0 id time 0 
 >                sell2 = Order Sell 0 0 id time 1
 >                buysize1 (x:xs) = os x
->                buysize2 []     = error (tracebooks asks1 asks2 "buysize2 applied to empty list")
->                buysize2 [x]    = error (tracebooks asks1 asks2 "buysize2 applied to list with only one element")
+>                buysize2 []     = error (tracebooks asks1 asks2 "buysize2 applied to empty list" (0,0))
+>                buysize2 [x]    = error (tracebooks asks1 asks2 "buysize2 applied to list with only one element" x)
 >                buysize2 (x:xs) = os (tracehd "buysize2" xs) 
 >      	         newinv = oldinv + (psi id xbids1) + (psi id xbuys1) - (psi id xasks1) - (psi id xsells1) + (psi id xbids2) + (psi id xbuys2) - (psi id xasks2) - (psi id xsells2)
 >                psi i os = foldr (+) 0 (map getordersize (filter ((=i).getorderid) os))
@@ -229,7 +259,7 @@ to the counterparty at a higher price. This is known as front-running.
 >                    f xs (AgentOP ys) = AgentOP (xs:ys)
 >                    estsize = broker_mo_size
 >                    order1size = os (tracehd "frontrunner:order1size" (decideorders asks1 asks2 0 0 estsize))
->                    order_for_timestep = [Ordertuple (bid, ask, buy, sell, newinv)], if(xbuys1 ~= [])&(order1size=(getordersize (tracehd "frontrunner:buy_exch1" xbuys1)))
+>                    order_for_timestep = [Ordertuple (bid, ask, buy, sell, newinv)], if(xbuys1 ~= [])&(order1size=(getordersize (tracehd "frontrunner:buy_exch1" xbuys1)))&(time>=starttime)
 >                                       = [], otherwise
 >                    bid = Order Bid 0 0 id time 0
 >                    buy = Order Buy (estsize - order1size) 0 id time 1
