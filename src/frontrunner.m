@@ -192,17 +192,17 @@ When one best ask has been filled, it will move onto the next best ask until the
 >broker :: agent_t *
 >broker xq (((ExchOP (bids1,asks1,sells1,buys1,xbids1,xasks1,xsells1,xbuys1,bestbid1,bestask1,ltp1,pp1,sellp1,buyp1,invs1)):rest1),
 >           ((ExchOP (bids2,asks2,sells2,buys2,xbids2,xasks2,xsells2,xbuys2,bestbid2,bestask2,ltp2,pp2,sellp2,buyp2,invs2)):rest2)) oldinv starttime time id
->              = f [Ordertuple (bid1,ask1,sell1,buy1,newinv),Ordertuple (bid2,ask2,sell2,buy2,newinv)] (broker xq (rest1, rest2) newinv starttime (time+1) id)
+>              = f order_for_timestep (broker xq (rest1, rest2) newinv starttime (time+1) id)
 >                where
 >                f xs (AgentOP ys) = AgentOP (xs:ys)
+>                order_for_timestep = [Ordertuple (bid1, ask1, buy1, sell1, newinv), Ordertuple (bid2, ask2, buy2, sell2, newinv)], if ((oldinv < broker_mo_size)&(time>=starttime))
+>                                   = [], otherwise
 >                bid1 = Order Bid 0 0 id time 0
 >                bid2 = Order Bid 0 0 id time 1
 >                ask1 = Order Ask 0 0 id time 0
 >                ask2 = Order Ask 0 0 id time 1
->                buy1 = Order Buy (buysize1 (decideorders asks1 asks2 0 0 broker_mo_size)) 0 id time 0, if((oldinv < broker_mo_size)&(time>=starttime))
->                     = Order Buy 0 0 id time 0, otherwise
->                buy2 = Order Buy (buysize2 (decideorders asks1 asks2 0 0 broker_mo_size)) 0 id time 1, if((oldinv < broker_mo_size)&(time>=starttime))
->                buy2 = Order Buy 0 0 id time 1, otherwise
+>                buy1 = Order Buy (buysize1 (decideorders asks1 asks2 0 0 broker_mo_size)) 0 id time 0
+>                buy2 = Order Buy (buysize2 (decideorders asks1 asks2 0 0 broker_mo_size)) 0 id time 1
 >                sell1 = Order Sell 0 0 id time 0 
 >                sell2 = Order Sell 0 0 id time 1
 >                buysize1 (x:xs) = os x
